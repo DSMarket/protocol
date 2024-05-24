@@ -91,6 +91,7 @@ contract Market is ERC721, Ownable {
         uint256 _ttl,
         uint256 _vesting
         uint256 _vestingCallerIncetiveRatio
+        uint256 _collateralRatio
     ) external {
         require(_vesting > 0, "Vesting amount must be greater than zero");
 
@@ -105,6 +106,7 @@ contract Market is ERC721, Ownable {
             cid: _cid,
             vestingCallerIncetiveRatio: _vestingCallerIncetiveRatio
             vesting: _vesting,
+            collateral: _vesting * _collateralRatio;
             vested: 0,
             penalties: 0,
             startTime: startTime,
@@ -157,17 +159,15 @@ contract Market is ERC721, Ownable {
         SFA storage sfa = sfAs[_sfaId];
         uint256 endTime = sfa.startTime + sfa.ttl
         uint256 elapsedTime = block.timestamp - sfa.startTime;
-        uint256 _vestingAvailable = ((elapsedTime * sfa.vesting) / sfa.ttl ) - sfa.vested;
-        uint256 vestingAvailableAmount = _vestingAvailable > sfa.vesting ? sfa.vesting : _vestingAvailable;
+        uint256 _vestingAvailable = (elapsedTime * sfa.vesting) / sfa.ttl ;
+        uint256 __vestingAvailable = _vestingAvailable > sfa.vesting ? sfa.vesting : _vestingAvailable;
+        uint256 vestingAvailableAmount = sfa.vested > __vestingAvailable ? 0 : ( __vestingAvailable - sfa.vested ) ;
         return vestingAvailableAmount
     }
 
     function vestingCallerIncentives(uint256 _sfaId) view returns (uint256 vestingCallerIncentivesAmount) {
         SFA storage sfa = sfAs[_sfaId];
-        uint256 endTime = sfa.startTime + sfa.ttl
-        uint256 elapsedTime = block.timestamp - sfa.startTime;
-        uint256 _vestingAvailable = ((elapsedTime * sfa.vesting) / sfa.ttl ) - sfa.vested;
-        uint256 vestingAvailable = _vestingAvailable > sfa.vesting ? sfa.vesting : _vestingAvailable;
+        uint256 _vestingAvailable = vestingAvailable(_sfaId)
         uint256 vestingCallerIncentivesAmount =  vestingAvailable * sfa.vestingCallerIncetiveBPS / BPS_BASE
         return vestingCallerIncentivesAmount
     }
@@ -175,7 +175,7 @@ contract Market is ERC721, Ownable {
     function claimVesting(uint256 _sfaId) external {
         require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfAs[_sfaId];
-        require(sfa.status != SFAStatus.INACTIVE && sfa.status != SFAStatus.PAUSED, "SFA is not active");
+        require(sfa.status == SFAStatus.ACTIVE, "SFA is not active");
         require(sfa.host == msg.sender, "Only the host can claim vesting");
         require(block.timestamp > sfa.startTime, "Vesting period has not started yet");
 
