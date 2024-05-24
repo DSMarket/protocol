@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 /**
  * to do:
- * [ ] - hosts funcs
+ * [X] - hosts funcs
  * [ ] - keeper funcs
  * [ ] - sentinels funcs
  * [ ] - collateral funcs
@@ -78,6 +78,8 @@ contract Market is ERC721, Ownable {
     event HostClaimed(uint256 indexed sfaId, address indexed host);
     event HostTransferInitiated(uint256 indexed sfaId, address indexed currentHost, address indexed newHost);
     event HostTransferAccepted(uint256 indexed sfaId, address indexed newHost);
+    event HostRegistered(address indexed host, string peerID, string pubkey);
+    event HostUpdated(address indexed host, string peerID, string pubkey);
 
     constructor(address _tokenAddress) ERC721("Storage Forward Agreements", "SFA Market") Ownable() {
         tokenAddress = _tokenAddress;
@@ -133,6 +135,27 @@ contract Market is ERC721, Ownable {
     /**
      * Host Funcs
      */
+
+    function registerHost(string memory _peerID, string memory _pubkey) external {
+        require(!hosts[msg.sender].active, "Host already registered");
+
+        hosts[msg.sender] = Host({
+            active: true,
+            peerID: _peerID,
+            pubkey: _pubkey
+        });
+
+        emit HostRegistered(msg.sender, _peerID, _pubkey);
+    }
+
+    function updateHost(string memory _peerID, string memory _pubkey) external {
+        require(hosts[msg.sender].active, "Host not registered");
+
+        hosts[msg.sender].peerID = _peerID;
+        hosts[msg.sender].pubkey = _pubkey;
+
+        emit HostUpdated(msg.sender, _peerID, _pubkey);
+    }
 
     function claimHost(uint256 _sfaId) external onlyHosts {
         require(_exists(_sfaId), "SFA does not exist");
