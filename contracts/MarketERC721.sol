@@ -4,9 +4,9 @@ pragma solidity ^0.8.24;
 /**
  * to do:
  * [X] - hosts funcs
+ * [ ] - owner funcs
  * [ ] - keeper funcs
  * [ ] - sentinels funcs
- * [ ] - collateral funcs
  * [x] - balance funcs
  * 
  * to Improve how ERC20 balance is manage in local and avoid that user spend gas on frecuenly call IERC20 transfer.
