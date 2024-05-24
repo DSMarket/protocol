@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 /**
  * to do:
  * [X] - hosts funcs
- * [ ] - owner funcs
+ * [x] - owner funcs
  * [x] - keeper funcs
  * [x] - sentinels funcs
  * [x] - balance funcs
@@ -23,9 +23,10 @@ pragma solidity ^0.8.24;
  * Keepers can:
  * - pause a SFA
  * - pause pause withdraw for one address or for all (emergency stop) 
+ * - kick sentinel out (and pause their funds)
  * 
  * Sentinels can:
- * - report downtime of CID in host, asking for penalties
+ * - report downtime of CID in host, asking for penalties (here we need to apply a better logic of how validate sentinel behavior)
  */
 
 // Uncomment this line to use console.log
@@ -147,13 +148,31 @@ contract Market is ERC721, Ownable {
     /**
      * Owner Funcs
      */
+
     function setKeeper(address _keeper, bool _status) external onlyOwner {
         keepers[_keeper] = _status;
+    }
+
+    function setSentinel(address _sentinel, bool _status) external onlyOwner {
+        sentinels[_sentinel] = _status;
+    }
+
+    function setCallerIncentivesBPS(uint256 _newBPS) external onlyOwner {
+        require(_newBPS <= BPS_BASE, "BPS value cannot exceed 10000");
+        callerIncentivesBPS = _newBPS;
+        emit CallerIncentivesBPSChanged(_newBPS);
+    }
+
+    function setPenaltyBPS(uint256 _newBPS) external onlyOwner {
+        require(_newBPS <= BPS_BASE, "BPS value cannot exceed 10000");
+        penaltyBPS = _newBPS;
+        emit PenaltyBPSChanged(_newBPS);
     }
 
     /**
      * Keepers Funcs
      */
+
     function changeSFAStatus(uint256 _sfaId, SFAStatus _newStatus) external onlyKeepers {
         SFA storage sfa = sfas[_sfaId];
         sfa.status = SFAStatus.PAUSED;
@@ -171,9 +190,15 @@ contract Market is ERC721, Ownable {
         emit Panic(_bool);
     }
 
+    function kickSentinel(address sentinel) external onlyKeepers {
+        withdrawalPaused[sentinel] = true;
+        sentinels[sentinel] = false;
+    }
+
     /**
      * Sentinel Funcs
      */
+
     function reportDowntime(uint256 _sfaId, uint256 time) external onlySentinels {
         require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfas[_sfaId];
