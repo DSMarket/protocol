@@ -4,26 +4,24 @@ Decentralized Storage Market Protocol
 
 # Use Cases Sequence Diagrams
 
-## Publish Content
+## Create SFA
 
 ```mermaid
 sequenceDiagram
     actor P as Publisher
     participant IPFS
-    participant R as Registry
-    participant T as DSMarket ERC20
-    participant M as Market ERC404
-    participant MV as Market Vault ERC4626
+    participant T as ERC20
+    participant M as Market ERC721
     participant H as Host
 
 
     P ->>+ IPFS: Publish content in a IPFS node
     IPFS ->>- P: return CID
-    P ->> T: Approve allowance to Market
-    P ->>+ M: Create New Storage Foward Contract (SFC NFT) with CID, N_Nodes, Total_Incentive and TTL
-    M ->> T: send tx to transfer tokens to Market Vault
-    T ->> MV: transfer tokens
-    M ->>- P: Mint Storage Foward Contract NTF to Publisher
+    P ->> T: Approve allowance to Market ERC721
+    P ->>+ M: Create New Storage Forward Agreement (SFA NFT) with CID, Vesting, startTime and TTL
+    M ->> T: call to transfer tokens to Market
+    T ->> M: transfer tokens
+    M ->>- P: Mint SFA NTF to Publisher
 
     H ->>+ M: Ask for new SFC
     H ->> M: Take Position of new SFC NFT as Taker or Hoster
@@ -32,22 +30,14 @@ sequenceDiagram
     IPFS ->> H: Retrive CID and Host Content in their node
 ```
 
-## Register as Taker or Hoster
+## Register as Host
 
 ```mermaid
 sequenceDiagram
     Actor H as Host
-    participant T as DSMarket ERC20
-    participant R as Hoster Registry
-    participant RV as Registry Vault ERC4626
+    participant M as Market ERC721
 
-
-    H ->> T: Approve allowance to Registry
-
-    H ->>+ R: Ask to register Node Host with IPFS ID
-    R ->> T: send msg to transfer token to Registry Vault
-    T ->> RV: Transfer tokens
-    R ->>- H: Mint Host NFT
+    H ->> M: Register as Host sending tx with ipfsID ipfsPubKey
 ```
 
 ## Register as Validator
@@ -65,5 +55,5 @@ sequenceDiagram
     V ->>+ R: Ask to register Node Validator with IPFS ID
     R ->> T: Transfer token to Registry Vault
     T ->> RV: Transfer tokens
-    R ->>- V: Mint Validator NFT
+    R ->>- V: Mint Validator NFT Account
 ```
