@@ -5,8 +5,8 @@ pragma solidity ^0.8.24;
  * to do:
  * [X] - hosts funcs
  * [ ] - owner funcs
- * [ ] - keeper funcs
- * [ ] - sentinels funcs
+ * [x] - keeper funcs
+ * [x] - sentinels funcs
  * [x] - balance funcs
  * 
  * to Improve how ERC20 balance is manage in local and avoid that user spend gas on frecuenly call IERC20 transfer.
@@ -42,6 +42,7 @@ contract Market is ERC721, Ownable {
     enum SFAStatus { ACTIVE, INACTIVE, PAUSED, FINISHED }
 
     struct SFA {
+        address publisher;
         string cid;
         uint256 vesting;
         uint256 vested;
@@ -60,6 +61,7 @@ contract Market is ERC721, Ownable {
     }
 
     mapping(address => uint256) public tokenBalances;
+    mapping(address => bool) public withdrawalPaused;
     mapping(address => uint256) public penalties;
     mapping(uint256 => SFA) public sfas;
     mapping(address => Host) public hosts;
@@ -69,17 +71,26 @@ contract Market is ERC721, Ownable {
     uint256 public sfaCounter;
     uint256 public callerIncentivesBPS;
     uint256 public penaltyBPS;
+    uint256 public sentinelFeeBPS;
     address public tokenAddress;
-
+    bool public panic;
 
     event SFACreated(uint256 indexed sfaId, address indexed publisher, string cid, uint256 vesting, uint256 startTime, uint256 ttl);
     event VestingClaimed(uint256 indexed sfaId, address indexed host, uint256 amount);
+    event SFAStatusUpdate(uint256 _sfaId, SFAStatus _newStatus);
+    
     event Withdrawed(address indexed from, address indexed to, uint256 amount);
+
     event HostClaimed(uint256 indexed sfaId, address indexed host);
     event HostTransferInitiated(uint256 indexed sfaId, address indexed currentHost, address indexed newHost);
     event HostTransferAccepted(uint256 indexed sfaId, address indexed newHost);
     event HostRegistered(address indexed host, string peerID, string pubkey);
     event HostUpdated(address indexed host, string peerID, string pubkey);
+
+    event Panic(bool panic);
+    event WithdrawalPaused(address indexed, bool paused);
+
+    event DowntimeReported(address indexed sentinel, uint256 indexed sfaId, uint256 time);
 
     constructor(address _tokenAddress) ERC721("Storage Forward Agreements", "SFA Market") Ownable() {
         tokenAddress = _tokenAddress;
@@ -118,6 +129,7 @@ contract Market is ERC721, Ownable {
         _mint(msg.sender, sfaCounter);
         
         sfas[sfaCounter] = SFA({
+            publisher: msg.sender,
             cid: _cid,
             vesting: _vesting,
             vested: 0,
@@ -130,6 +142,50 @@ contract Market is ERC721, Ownable {
         });
 
         emit SFACreated(sfaCounter, msg.sender, _cid, _vesting, startTime, _ttl);
+    }
+
+    /**
+     * Owner Funcs
+     */
+    function setKeeper(address _keeper, bool _status) external onlyOwner {
+        keepers[_keeper] = _status;
+    }
+
+    /**
+     * Keepers Funcs
+     */
+    function changeSFAStatus(uint256 _sfaId, SFAStatus _newStatus) external onlyKeepers {
+        SFA storage sfa = sfas[_sfaId];
+        sfa.status = SFAStatus.PAUSED;
+        sfa.status = SFAStatus.ACTIVE;
+        emit SFAStatusUpdate(_sfaId, _newStatus);
+    }
+
+    function setPauseWithdrawals(address _user, bool _bool) external onlyKeepers {
+        withdrawalPaused[_user] = _bool;
+        emit WithdrawalPaused(_user, _bool);
+    }
+
+    function setPanic(bool _bool) external onlyKeepers {
+        panic = _bool;
+        emit Panic(_bool);
+    }
+
+    /**
+     * Sentinel Funcs
+     */
+    function reportDowntime(uint256 _sfaId, uint256 time) external onlySentinels {
+        require(_exists(_sfaId), "SFA does not exist");
+        SFA storage sfa = sfas[_sfaId];
+        require(sfa.status == SFAStatus.ACTIVE, "SFA is not active");
+
+        uint256 penalty = time * sfa.vesting * penaltyBPS / BPS_BASE / sfa.ttl;
+        sfa.collateral -= penalty;
+        uint256 fee = penalty * sentinelFeeBPS / BPS_BASE;
+        tokenBalances[msg.sender] += fee;
+        tokenBalances[sfa.publisher] += penalty - fee;
+
+        emit DowntimeReported(msg.sender, _sfaId, time);
     }
 
     /**
