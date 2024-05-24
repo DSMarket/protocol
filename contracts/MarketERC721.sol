@@ -71,7 +71,7 @@ contract Market is ERC721, Ownable {
 
     uint256 public sfaCounter;
     uint256 public callerIncentivesBPS;
-    uint256 public penaltyBPS;
+    uint256 public collateralRatioBPS;
     uint256 public sentinelFeeBPS;
     address public tokenAddress;
     bool public panic;
@@ -96,7 +96,7 @@ contract Market is ERC721, Ownable {
     constructor(address _tokenAddress) ERC721("Storage Forward Agreements", "SFA Market") Ownable() {
         tokenAddress = _tokenAddress;
         callerIncentivesBPS = 50;
-        penaltyBPS = 20_000;
+        collateralRatioBPS = 20_000;
     }
 
     modifier onlyHosts() {
@@ -117,8 +117,7 @@ contract Market is ERC721, Ownable {
     function createSFA(
         string memory _cid,
         uint256 _ttl,
-        uint256 _vesting,
-        uint256 _collateralRatio
+        uint256 _vesting
     ) external {
         require(_vesting > 0, "Vesting amount must be greater than zero");
 
@@ -134,7 +133,7 @@ contract Market is ERC721, Ownable {
             cid: _cid,
             vesting: _vesting,
             vested: 0,
-            collateral: _vesting * _collateralRatio,
+            collateral: _vesting * collateralRatioBPS / BPS_BASE,
             startTime: startTime,
             ttl: _ttl,
             status: SFAStatus.INACTIVE,
@@ -160,13 +159,11 @@ contract Market is ERC721, Ownable {
     function setCallerIncentivesBPS(uint256 _newBPS) external onlyOwner {
         require(_newBPS <= BPS_BASE, "BPS value cannot exceed 10000");
         callerIncentivesBPS = _newBPS;
-        emit CallerIncentivesBPSChanged(_newBPS);
     }
 
-    function setPenaltyBPS(uint256 _newBPS) external onlyOwner {
+    function setCollateralRatioBPS(uint256 _newBPS) external onlyOwner {
         require(_newBPS <= BPS_BASE, "BPS value cannot exceed 10000");
-        penaltyBPS = _newBPS;
-        emit PenaltyBPSChanged(_newBPS);
+        collateralRatioBPS = _newBPS;
     }
 
     /**
@@ -204,7 +201,7 @@ contract Market is ERC721, Ownable {
         SFA storage sfa = sfas[_sfaId];
         require(sfa.status == SFAStatus.ACTIVE, "SFA is not active");
 
-        uint256 penalty = time * sfa.vesting * penaltyBPS / BPS_BASE / sfa.ttl;
+        uint256 penalty = time * sfa.vesting * collateralRatioBPS / BPS_BASE / sfa.ttl;
         sfa.collateral -= penalty;
         uint256 fee = penalty * sentinelFeeBPS / BPS_BASE;
         tokenBalances[msg.sender] += fee;
