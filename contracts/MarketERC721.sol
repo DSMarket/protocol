@@ -77,21 +77,8 @@ contract Market is ERC721, Ownable {
     bool public panic;
 
     event SFACreated(uint256 indexed sfaId, address indexed publisher, string cid, uint256 vesting, uint256 startTime, uint256 ttl);
-    event VestingClaimed(uint256 indexed sfaId, address indexed host, uint256 amount);
-    event SFAStatusUpdate(uint256 _sfaId, SFAStatus _newStatus);
-    
     event Withdrawed(address indexed from, address indexed to, uint256 amount);
-
-    event HostClaimed(uint256 indexed sfaId, address indexed host);
-    event HostTransferInitiated(uint256 indexed sfaId, address indexed currentHost, address indexed newHost);
-    event HostTransferAccepted(uint256 indexed sfaId, address indexed newHost);
-    event HostRegistered(address indexed host, string peerID, string pubkey);
-    event HostUpdated(address indexed host, string peerID, string pubkey);
-
     event Panic(bool panic);
-    event WithdrawalPaused(address indexed, bool paused);
-
-    event DowntimeReported(address indexed sentinel, uint256 indexed sfaId, uint256 time);
 
     constructor(address _tokenAddress) ERC721("Storage Forward Agreements", "SFA Market") Ownable() {
         tokenAddress = _tokenAddress;
@@ -120,14 +107,10 @@ contract Market is ERC721, Ownable {
         uint256 _vesting
     ) external {
         require(_vesting > 0, "Vesting amount must be greater than zero");
-
         uint256 startTime = block.timestamp;
-
         require(IERC20(tokenAddress).transferFrom(msg.sender, address(this), _vesting), "Token transfer failed");
-
         sfaCounter++;
         _mint(msg.sender, sfaCounter);
-        
         sfas[sfaCounter] = SFA({
             publisher: msg.sender,
             cid: _cid,
@@ -140,7 +123,6 @@ contract Market is ERC721, Ownable {
             host: address(0),
             pendingHost: address(0)
         });
-
         emit SFACreated(sfaCounter, msg.sender, _cid, _vesting, startTime, _ttl);
     }
 
@@ -174,12 +156,10 @@ contract Market is ERC721, Ownable {
         SFA storage sfa = sfas[_sfaId];
         sfa.status = SFAStatus.PAUSED;
         sfa.status = SFAStatus.ACTIVE;
-        emit SFAStatusUpdate(_sfaId, _newStatus);
     }
 
     function setPauseWithdrawals(address _user, bool _bool) external onlyKeepers {
         withdrawalPaused[_user] = _bool;
-        emit WithdrawalPaused(_user, _bool);
     }
 
     function setPanic(bool _bool) external onlyKeepers {
@@ -200,14 +180,11 @@ contract Market is ERC721, Ownable {
         require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfas[_sfaId];
         require(sfa.status == SFAStatus.ACTIVE, "SFA is not active");
-
         uint256 penalty = time * sfa.vesting * collateralRatioBPS / BPS_BASE / sfa.ttl;
         sfa.collateral -= penalty;
         uint256 fee = penalty * sentinelFeeBPS / BPS_BASE;
         tokenBalances[msg.sender] += fee;
         tokenBalances[sfa.publisher] += penalty - fee;
-
-        emit DowntimeReported(msg.sender, _sfaId, time);
     }
 
     /**
@@ -216,23 +193,17 @@ contract Market is ERC721, Ownable {
 
     function registerHost(string memory _peerID, string memory _pubkey) external {
         require(!hosts[msg.sender].active, "Host already registered");
-
         hosts[msg.sender] = Host({
             active: true,
             peerID: _peerID,
             pubkey: _pubkey
         });
-
-        emit HostRegistered(msg.sender, _peerID, _pubkey);
     }
 
     function updateHost(string memory _peerID, string memory _pubkey) external {
         require(hosts[msg.sender].active, "Host not registered");
-
         hosts[msg.sender].peerID = _peerID;
         hosts[msg.sender].pubkey = _pubkey;
-
-        emit HostUpdated(msg.sender, _peerID, _pubkey);
     }
 
     function claimHost(uint256 _sfaId) external onlyHosts {
@@ -240,13 +211,9 @@ contract Market is ERC721, Ownable {
         SFA storage sfa = sfas[_sfaId];
         require(sfa.status == SFAStatus.INACTIVE, "SFA is already active");
         require(sfa.host == address(0), "Host already claimed");
-
         require(IERC20(tokenAddress).transferFrom(msg.sender, address(this), sfa.collateral), "Token transfer failed");
-
         sfa.host = msg.sender;
         sfa.status = SFAStatus.ACTIVE;
-
-        emit HostClaimed(_sfaId, msg.sender);
     }
 
     function initiateHostTransfer(uint256 _sfaId, address _newHost) external {
@@ -254,21 +221,15 @@ contract Market is ERC721, Ownable {
         SFA storage sfa = sfas[_sfaId];
         require(sfa.host == msg.sender, "Only the current host can initiate transfer");
         require(_newHost != address(0), "New host address cannot be zero");
-
         sfa.pendingHost = _newHost;
-
-        emit HostTransferInitiated(_sfaId, msg.sender, _newHost);
     }
 
     function acceptHostTransfer(uint256 _sfaId) external {
         require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfas[_sfaId];
         require(sfa.pendingHost == msg.sender, "Only the pending host can accept transfer");
-
         sfa.host = msg.sender;
         sfa.pendingHost = address(0);
-
-        emit HostTransferAccepted(_sfaId, msg.sender);
     }
 
     /**
@@ -296,7 +257,6 @@ contract Market is ERC721, Ownable {
         require(sfa.status == SFAStatus.ACTIVE, "SFA is not active");
         require(sfa.host == msg.sender, "Only the host can claim vesting");
         require(block.timestamp > sfa.startTime, "Vesting period has not started yet");
-
         uint256 _vestingAvailable = vestingAvailable(_sfaId);
         require(_vestingAvailable > 0, "No vested tokens available");
         uint256 _callerIncentives =  _vestingAvailable * callerIncentivesBPS / BPS_BASE;
@@ -308,8 +268,6 @@ contract Market is ERC721, Ownable {
             sfa.status = SFAStatus.FINISHED;
             tokenBalances[sfa.host] += sfa.collateral;
         }
-
-        emit VestingClaimed(_sfaId, msg.sender, _vestingAvailable);
     }
 
     /**
@@ -321,7 +279,6 @@ contract Market is ERC721, Ownable {
         tokenBalances[msg.sender] -= _amount;
         penalties[msg.sender] = 0;
         require(IERC20(tokenAddress).transfer(_to, _amount), "Token transfer failed");
-        emit Withdrawed(msg.sender, _to, balanceAvailable);
     }
 
 }
