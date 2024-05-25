@@ -8,6 +8,7 @@ pragma solidity ^0.8.24;
  * [x] - keeper funcs
  * [x] - sentinels funcs
  * [x] - balance funcs
+ * [ ] - add require for "panic" in many funcs
  * 
  * to Improve how ERC20 balance is manage in local and avoid that user spend gas on frecuenly call IERC20 transfer.
  * decide to use a "local balance" where internal will charge and later if address want to withdraw can call "withdraw" to transfer their balance to somewhere
