@@ -9,6 +9,8 @@ pragma solidity ^0.8.24;
  * [x] - sentinels funcs
  * [x] - balance funcs
  * [x] - add require for "panic" in many funcs
+ * [WIP] - adding disputes
+ * [ ] - add DAO fees
  *
  * to Improve how ERC20 balance is manage in local and avoid that user spend gas on frecuenly call IERC20 transfer.
  * decide to use a "local balance" where internal will charge and later if address want to withdraw can call "withdraw" to transfer their balance to somewhere
@@ -38,14 +40,12 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Market is ERC721, Ownable {
+
     uint256 constant BPS_BASE = 10_000;
 
-    enum Status {
-        INACTIVE,
-        ACTIVE,
-        PAUSED,
-        FINISHED
-    }
+    enum DisputeStatus { IDLE, COMMIT, REVEAL, RESOLVED }
+    enum Vote { NONE, YES, NO, ABSTAIN }
+    enum Status { INACTIVE, ACTIVE, PAUSED, FINISHED }
 
     struct SFA {
         address publisher;
@@ -60,6 +60,19 @@ contract Market is ERC721, Ownable {
         uint256 collateral;
     }
 
+    struct Dispute {
+        address claimant;
+        address sfaId;
+        string title;
+        string description;
+        uint256 deadline;
+        uint256 penalties;
+        mapping(address => bytes32) commitments;
+        mapping(address => Vote) votes;
+        address[] arbitrators;
+        DisputeStatus status;
+    }
+
     struct Host {
         Status status;
         string peerID;
@@ -72,36 +85,34 @@ contract Market is ERC721, Ownable {
     }
 
     mapping(address => uint256) public tokenBalances;
-    mapping(address => bool) public withdrawalPaused;
-    mapping(address => uint256) public penalties;
     mapping(uint256 => SFA) public sfas;
     mapping(address => Host) public hosts;
-    mapping(address => bool) public keepers;
     mapping(address => Sentinel) public sentinels;
+    mapping(uint256 => address) public sentinelsIndex;
+    mapping(uint256 => Dispute) public disputes;
+    mapping(address => bool) public withdrawalPaused;
+    mapping(address => bool) public keepers;
 
+    uint256 public sentinelsCounter;
+    uint256 public disputeCounter;
     uint256 public sfaCounter;
-    uint256 public callerIncentivesBPS;
-    uint256 public sfaCollateralRatioBPS;
-    uint256 public sentinelsCollateral;
-    uint256 public sentinelFeeBPS;
+    uint256 public callerIncentivesBPS = 50;
+    uint256 public sentinelFeeBPS = 50;
+    uint256 public sfaCollateralRatioBPS = 20_000;
+    uint256 public sentinelsCollateral = 30e18;
+    uint256 public arbitratorCount = 3; 
     address public tokenAddress;
     bool public panic;
 
-    event SFACreated(
-        uint256 indexed sfaId,
-        address indexed publisher,
-        string cid,
-        uint256 vesting,
-        uint256 startTime,
-        uint256 ttl
-    );
+    event SFACreated(uint256 indexed sfaId, address indexed publisher, string cid, uint256 vesting, uint256 startTime, uint256 ttl);
+    event DisputeCreated(uint256 sfaId, address claimant, string title, string description);
+    event ArbitratorsSelected(uint256 disputeId, address[] selectedArbitrators);
+    event DisputeResolved(uint256 disputeId, VoteOption result);
     event Withdrawed(address indexed from, address indexed to, uint256 amount);
     event Panic(bool panic);
 
     constructor(address _tokenAddress) ERC721("Storage Forward Agreements", "SFA Market") Ownable() {
         tokenAddress = _tokenAddress;
-        callerIncentivesBPS = 50;
-        sfaCollateralRatioBPS = 20_000;
     }
 
     /**
@@ -148,20 +159,20 @@ contract Market is ERC721, Ownable {
      * Owner Funcs
      */
 
-    function setKeeper(address _keeper, bool _status) external onlyOwner {
+    function setKeeper(address _keeper, bool _status) external onlyOwner() {
         keepers[_keeper] = _status;
     }
 
-    function updateSentinelStatus(address _sentinel, Status _newStatus) external onlyOwner {
+    function updateSentinelStatus(address _sentinel, Status _newStatus) external onlyOwner() {
         sentinels[_sentinel].status = _newStatus;
     }
 
-    function setCallerIncentivesBPS(uint256 _newBPS) external onlyOwner {
+    function setCallerIncentivesBPS(uint256 _newBPS) external onlyOwner() {
         require(_newBPS <= BPS_BASE, "BPS value cannot exceed 10000");
         callerIncentivesBPS = _newBPS;
     }
 
-    function setCollateralRatioBPS(uint256 _newBPS) external onlyOwner {
+    function setCollateralRatioBPS(uint256 _newBPS) external onlyOwner() {
         require(_newBPS <= BPS_BASE, "BPS value cannot exceed 10000");
         sfaCollateralRatioBPS = _newBPS;
     }
@@ -170,29 +181,29 @@ contract Market is ERC721, Ownable {
      * Keepers Funcs
      */
 
-    function updateSFAStatus(uint256 _sfaId, SFAStatus _newStatus) external onlyKeepers {
+    function updateSFAStatus(uint256 _sfaId, SFAStatus _newStatus) external onlyKeepers() {
         require(_newStatus == Status.ACTIVE || _newStatus == Status.PAUSED, "New Status is not ACTIVE or PAUSED");
         SFA storage sfa = sfas[_sfaId];
         require(sfa.status == Status.ACTIVE || sfa.status == Status.PAUSED, "SFA Status is not ACTIVE or PAUSED");
         sfa.status = _newStatus
     }
 
-    function setPauseWithdrawals(address _user, bool _bool) external onlyKeepers {
+    function setPauseWithdrawals(address _user, bool _bool) external onlyKeepers() {
         withdrawalPaused[_user] = _bool;
     }
 
-    function setPanic(bool _bool) external onlyKeepers {
+    function setPanic(bool _bool) external onlyKeepers() {
         panic = _bool;
         emit Panic(_bool);
     }
 
-    function kickSentinel(address sentinel) external onlyKeepers {
+    function kickSentinel(address sentinel) external onlyKeepers() {
         withdrawalPaused[sentinel] = true;
         sentinels[sentinel] = false;
     }
 
     /**
-     * Sentinel Funcs
+     * Sentinels Funcs
      */
 
     function registerSentinel() external {
@@ -202,16 +213,80 @@ contract Market is ERC721, Ownable {
         sentinels[msg.sender] = Sentinel({status: Status.ACTIVE, collateral: sentinelsCollateral});
     }
 
-    function reportDowntime(uint256 _sfaId, uint256 time) external onlySentinels {
-        require(!panic, "Panic!");
-        require(_exists(_sfaId), "SFA does not exist");
-        SFA storage sfa = sfas[_sfaId];
-        require(sfa.status == Status.ACTIVE, "SFA is not active");
-        uint256 penalty = (time * sfa.vesting * sfaCollateralRatioBPS) / BPS_BASE / sfa.ttl;
-        sfa.collateral -= penalty;
-        uint256 fee = (penalty * sentinelFeeBPS) / BPS_BASE;
-        tokenBalances[msg.sender] += fee;
-        tokenBalances[sfa.publisher] += penalty - fee;
+    function createDispute(uint256 _sfaId, string memory _title,  string memory _description) external onlySentinels() {
+        Dispute storage dispute = disputes[disputeCount];
+        dispute.claimant = msg.sender;
+        dispute.title = _title;
+        dispute.description = _description;
+        dispute.status = DisputeStatus.COMMIT;
+        dispute.deadline = block.timestamp + 1 hours;
+
+        tokenBalances[msg.sender] -= 
+
+        uint256 i = 0;
+        while (dispute.arbitrators.length < arbitratorCount) {
+            uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.prevrandao, msg.sender, i))) % sentinelsCounter;
+            address selectedSentinel = sentinelsIndex[randomIndex];
+            if(sentinels[selectedSentinel].status == Status.ACTIVE) {
+                dispute.arbitrators.push(selectedSentinel);
+            }
+            i++;
+        }
+
+        emit DisputeCreated(disputeCount, msg.sender, _title, _description);
+        emit ArbitratorsSelected(disputeCount, dispute.arbitrators);
+        disputeCount++;
+    }
+
+    function commitVote(uint256 _disputeId, bytes32 _commitment) external onlySentinels() {
+        require(isSelectedArbitrator(_disputeId, msg.sender), "Not a selected arbitrator");
+        require(!disputes[_disputeId].resolved, "Dispute already resolved");
+        require(disputes[_disputeId].commitments[msg.sender] == 0, "Already voted");
+
+        disputes[_disputeId].commitments[msg.sender] = _commitment;
+    }
+
+    function revealVote(uint256 _disputeId, VoteOption _vote, uint256 _salt) external onlySentinels() {
+        require(isSelectedArbitrator(_disputeId, msg.sender), "Not a selected arbitrator");
+        require(!disputes[_disputeId].status == DisputeStatus.RESOLVED, "Dispute already resolved");
+
+        bytes32 commitment = keccak256(abi.encodePacked(_vote, _salt));
+        require(disputes[_disputeId].commitments[msg.sender] == commitment, "Invalid reveal");
+
+        disputes[_disputeId].votes[msg.sender] = _vote;
+    }
+
+    function resolveDispute(uint256 _disputeId) external onlySentinels() {
+        require(!disputes[_disputeId].resolved, "Dispute already resolved");
+
+        uint256 yesCount = 0;
+        uint256 noCount = 0;
+        uint256 abstainCount = 0;
+
+        for (uint256 i = 0; i < disputes[_disputeId].arbitrators.length; i++) {
+            address arbitrator = disputes[_disputeId].arbitrators[i];
+            VoteOption vote = disputes[_disputeId].votes[arbitrator];
+            if (vote == VoteOption.Yes) {
+                yesCount++;
+            } else if (vote == VoteOption.No) {
+                noCount++;
+            } else if (vote == VoteOption.Abstain) {
+                abstainCount++;
+            }
+        }
+
+        VoteOption result = yesCount > noCount ? VoteOption.Yes : VoteOption.No;
+        disputes[_disputeId].resolved = true;
+        emit DisputeResolved(_disputeId, result);
+    }
+
+    function isSelectedArbitrator(uint256 _disputeId, address _arbitrator) internal view returns (bool) {
+        for (uint256 i = 0; i < disputes[_disputeId].arbitrators.length; i++) {
+            if (disputes[_disputeId].arbitrators[i] == _arbitrator) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -229,7 +304,7 @@ contract Market is ERC721, Ownable {
         hosts[msg.sender].pubkey = _pubkey;
     }
 
-    function claimHost(uint256 _sfaId) external onlyHosts {
+    function claimHost(uint256 _sfaId) external onlyHosts() {
         require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfas[_sfaId];
         require(sfa.status == Status.INACTIVE, "SFA is already active");
@@ -300,10 +375,8 @@ contract Market is ERC721, Ownable {
      */
     function withdraw(address _to, uint256 _amount) external {
         require(!panic, "Panic!");
-        uint256 balanceAvailable = tokenBalances[msg.sender] - penalties[msg.sender];
-        require(balanceAvailable > _amount, "Insufficiente Token balance");
+        require(tokenBalances[msg.sender] > _amount, "Insufficiente Token balance");
         tokenBalances[msg.sender] -= _amount;
-        penalties[msg.sender] = 0;
         require(IERC20(tokenAddress).transfer(_to, _amount), "Token transfer failed");
     }
 }
