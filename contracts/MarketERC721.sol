@@ -74,6 +74,8 @@ contract Market is ERC721, Ownable {
         uint256 sfaId;
         string title;
         string description;
+        uint256 startTime;
+        uint256 endTime;
         uint256 deadline;
         uint256 penalties;
         mapping(address => bytes32) commitments;
@@ -231,11 +233,19 @@ contract Market is ERC721, Ownable {
         sentinels[msg.sender] = Sentinel({status: Status.ACTIVE, collateral: sentinelsCollateral});
     }
 
-    function createDispute(uint256 _sfaId, string memory _title, string memory _description) external onlySentinels {
+    function createDispute(
+        uint256 _sfaId,
+        string memory _title,
+        string memory _description,
+        uint256 _startTime,
+        uint256 _endTime
+    ) external onlySentinels {
         Dispute storage dispute = disputes[disputeCounter];
         dispute.claimant = msg.sender;
         dispute.sfaId = _sfaId;
         dispute.title = _title;
+        dispute.startTime = _startTime;
+        dispute.endTime = _endTime;
         dispute.description = _description;
         dispute.status = Status.ACTIVE;
         dispute.deadline = block.timestamp + 1 hours;
