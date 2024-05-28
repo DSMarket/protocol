@@ -278,7 +278,7 @@ contract Market is ERC721, Ownable {
 
     function resolveDispute(uint256 _disputeId) external onlySentinels {
         Dispute storage dispute = disputes[_disputeId];
-        require(dispute.deadline < block.timestamp, "Deadline not end");
+        require((dispute.deadline + 1 hours) < block.timestamp, "Deadline not end");
         require(dispute.status == Status.ACTIVE, "Dispute finished");
 
         uint256 yesCount = 0;
