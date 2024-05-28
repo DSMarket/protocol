@@ -9,7 +9,7 @@ pragma solidity ^0.8.24;
  * [x] - sentinels funcs
  * [x] - balance funcs
  * [x] - add require for "panic" in many funcs
- * [WIP] - adding disputes
+ * [WIP] - adding disputes (missing adding how manage balance for rewards and penalties in dispute)
  * [ ] - add DAO fees
  *
  * to Improve how ERC20 balance is manage in local and avoid that user spend gas on frecuenly call IERC20 transfer.
