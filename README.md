@@ -90,3 +90,20 @@ sequenceDiagram
     T ->> M: Deposit tokens as collateral
     M ->>- M: Active Sentinel
 ```
+
+## Create a Dispute
+
+When a host is not working as expected or the CID is not available, Sentinels can create a dispute to charge a penalty to hosts of SFA that are not complying with their obligations.
+
+```mermaid
+sequenceDiagram
+    Actor S as Sentinel
+    participant M as Market ERC721
+    Actor S2 as Sentinel 2
+
+    S ->>+ M: Create Dispute
+    Note right of S: Dispute:<br>- SFA ID<br>- title<br>- description<br>- startTime<br>- endTime
+    M ->>- M: top-up dispute balances
+    S2 ->> M: commit vote
+    Note left of S2: Dispute:<br>- SFA ID<br>- title<br>- description<br>- startTime<br>- endTime
+```
