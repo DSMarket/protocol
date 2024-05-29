@@ -153,9 +153,9 @@ contract Market is ERC721, Ownable {
         _;
     }
 
-    function createSFA(string memory _cid, uint256 _ttl, uint256 _vesting) external {
+    function createSFA(string memory _cid, uint256 _vesting, uint256 _startTime, uint256 _ttl) external {
         require(_vesting > 0, "Vesting amount must be greater than zero");
-        uint256 startTime = block.timestamp;
+        require(_startTime > block.timestamp, "Start time must be older than block timestamp");
         require(IERC20(tokenAddress).transferFrom(msg.sender, address(this), _vesting), "Token transfer failed");
         sfaCounter++;
         _mint(msg.sender, sfaCounter);
@@ -165,13 +165,13 @@ contract Market is ERC721, Ownable {
             vesting: _vesting,
             vested: 0,
             collateral: (_vesting * sfaCollateralRatioBPS) / BPS_BASE,
-            startTime: startTime,
+            startTime: _startTime,
             ttl: _ttl,
             status: Status.INACTIVE,
             host: address(0),
             pendingHost: address(0)
         });
-        emit SFACreated(sfaCounter, msg.sender, _cid, _vesting, startTime, _ttl);
+        emit SFACreated(sfaCounter, msg.sender, _cid, _vesting, _startTime, _ttl);
     }
 
     /**
@@ -255,9 +255,7 @@ contract Market is ERC721, Ownable {
         uint256 i = 0;
         uint256 randomNumber = block.prevrandao;
         while (dispute.arbitrators.length < arbitratorsPerDispute) {
-            // check this: sacar keccak256 y hacer un split del prevrandao
-            uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.prevrandao, msg.sender, i))) %
-                sentinelsCounter;
+            uint256 randomIndex = (randomNumber >> (i * 15)) & 0xFFFF % sentinelsCounter;
             address selectedSentinel = sentinelsIndex[randomIndex];
             if (sentinels[selectedSentinel].status == Status.ACTIVE) {
                 dispute.arbitrators.push(selectedSentinel);
@@ -348,8 +346,8 @@ contract Market is ERC721, Ownable {
     }
 
     function claimHost(uint256 _sfaId) external onlyHosts {
-        require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfas[_sfaId];
+        require(sfa.startTime != 0, "SFA does not exist");
         require(sfa.status == Status.INACTIVE, "SFA is already active");
         require(sfa.host == address(0), "Host already claimed");
         require(IERC20(tokenAddress).transferFrom(msg.sender, address(this), sfa.collateral), "Token transfer failed");
@@ -358,8 +356,8 @@ contract Market is ERC721, Ownable {
     }
 
     function initiateHostTransfer(uint256 _sfaId, address _newHost) external {
-        require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfas[_sfaId];
+        require(sfa.startTime != 0, "SFA does not exist");
         require(sfa.host == msg.sender, "Only the current host can initiate transfer");
         require(_newHost != address(0), "New host address cannot be zero");
         sfa.pendingHost = _newHost;
@@ -367,8 +365,8 @@ contract Market is ERC721, Ownable {
 
     function acceptHostTransfer(uint256 _sfaId) external {
         require(!panic, "Panic!");
-        require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfas[_sfaId];
+        require(sfa.startTime != 0, "SFA does not exist");
         require(sfa.pendingHost == msg.sender, "Only the pending host can accept transfer");
         sfa.host = msg.sender;
         sfa.pendingHost = address(0);
@@ -395,8 +393,8 @@ contract Market is ERC721, Ownable {
 
     function claimVesting(uint256 _sfaId) external {
         require(!panic, "Panic!");
-        require(_exists(_sfaId), "SFA does not exist");
         SFA storage sfa = sfas[_sfaId];
+        require(sfa.startTime != 0, "SFA does not exist");
         require(sfa.status == Status.ACTIVE, "SFA is not active");
         require(sfa.host == msg.sender, "Only the host can claim vesting");
         require(block.timestamp > sfa.startTime, "Vesting period has not started yet");
