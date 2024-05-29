@@ -1,22 +1,19 @@
 const { ethers } = require("hardhat");
+const { expect } = require("chai");
 
 describe("Market Contract", function () {
-  let Market, market;
+  let market, token;
   let owner, keeper, sentinel, host, addr1;
-  let token, Token;
   const initialBalance = ethers.utils.parseEther("1000");
 
   beforeEach(async function () {
-    // Deploy an ERC20 token for testing
-    Token = await ethers.getContractFactory("SFAToken");
-    token = await Token.deploy("SFA Token", "SFAT", initialBalance);
-    await token.deployed();
-
-    // Deploy the Market contract
-    Market = await ethers.getContractFactory("Market");
     [owner, keeper, sentinel, host, addr1, ...addrs] =
       await ethers.getSigners();
-    market = await Market.deploy(token.address);
+    // Deploy an ERC20 token and ERC721 Market
+    token = await ethers.deployContract("SFAToken", [initialBalance]);
+    await token.deployed();
+
+    market = await ethers.deployContract("Market", [token.address]);
     await market.deployed();
 
     // Transfer tokens to other accounts
@@ -35,7 +32,6 @@ describe("Market Contract", function () {
       await market.connect(owner).setKeeper(addr1.address, true);
       expect(await market.keepers(addr1.address)).to.be.true;
     });
-
     it("should allow the owner to update sentinel status", async function () {
       await market.connect(owner).updateSentinelStatus(sentinel.address, 1); // ACTIVE
       expect((await market.sentinels(sentinel.address)).status).to.equal(1); // ACTIVE
