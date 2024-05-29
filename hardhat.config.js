@@ -18,11 +18,12 @@ const LOCALHOST_RPC = process.env.LOCALHOST_RPC || "http://127.0.0.1:8545";
 const config = {
   defaultNetwork: "localhost",
   networks: {
-    hardhat: {},
     localhost: {
-      url: LOCALHOST_RPC,
+      url: "http://127.0.0.1:8545",
       timeout: 300000,
+      gas: 15_000_000,
     },
+    hardhat: {},
   },
   etherscan: {
     // Your API key for Etherscan
