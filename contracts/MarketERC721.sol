@@ -11,6 +11,7 @@ pragma solidity ^0.8.24;
  * [x] - add require for "panic" in many funcs
  * [WIP] - adding disputes (missing adding how manage balance for rewards and penalties in dispute)
  * [ ] - add DAO fees
+ * [ ] - add sentinels funcs when want to udpate status or retire as nodes
  *
  * to Improve how ERC20 balance is manage in local and avoid that user spend gas on frecuenly call IERC20 transfer.
  * decide to use a "local balance" where internal will charge and later if address want to withdraw can call "withdraw" to transfer their balance to somewhere
@@ -94,6 +95,7 @@ contract Market is ERC721, Ownable {
         uint256 collateral;
     }
 
+    mapping(address => uint256) public disputeBalances;
     mapping(address => uint256) public tokenBalances;
     mapping(uint256 => SFA) public sfas;
     mapping(address => Host) public hosts;
@@ -110,7 +112,7 @@ contract Market is ERC721, Ownable {
     uint256 public sentinelFeeBPS = 50;
     uint256 public sfaCollateralRatioBPS = 20_000;
     uint256 public sentinelsCollateral = 30e18;
-    uint256 public arbitratorCount = 3;
+    uint256 public arbitratorsPerDispute = 3;
     address public tokenAddress;
     bool public panic;
 
@@ -251,7 +253,9 @@ contract Market is ERC721, Ownable {
         dispute.deadline = block.timestamp + 1 hours;
 
         uint256 i = 0;
-        while (dispute.arbitrators.length < arbitratorCount) {
+        uint256 randomNumber = block.prevrandao;
+        while (dispute.arbitrators.length < arbitratorsPerDispute) {
+            // check this: sacar keccak256 y hacer un split del prevrandao
             uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.prevrandao, msg.sender, i))) %
                 sentinelsCounter;
             address selectedSentinel = sentinelsIndex[randomIndex];
@@ -309,6 +313,14 @@ contract Market is ERC721, Ownable {
 
         Vote result = yesCount > noCount ? Vote.YES : Vote.NO;
         dispute.status = Status.FINISHED;
+
+        if (result == Vote.YES) {
+            uint256 reward = 0;
+            reward = (sfas[dispute.sfaId].collateral * sentinelFeeBPS) / BPS_BASE;
+            sfas[dispute.sfaId].collateral -= reward;
+            tokenBalances[dispute.claimant] += reward;
+        }
+
         emit DisputeResolved(_disputeId, result);
     }
 
