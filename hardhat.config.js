@@ -1,10 +1,7 @@
 require("@nomicfoundation/hardhat-toolbox");
 
 /** @type import('hardhat/config').HardhatUserConfig */
-require("@nomiclabs/hardhat-vyper");
-require("@nomicfoundation/hardhat-chai-matchers");
-require("@nomiclabs/hardhat-web3");
-require("@nomiclabs/hardhat-ethers");
+require("@nomicfoundation/hardhat-ethers");
 require("@nomiclabs/hardhat-solhint");
 
 const DEPLOYER_PK = [`${vars.get("DEPLOYER_PK")}`];
