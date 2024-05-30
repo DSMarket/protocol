@@ -150,13 +150,7 @@ describe("Market Contract", function () {
       const disputeId = 0;
       await market
         .connect(sentinel1)
-        .createDispute(
-          1,
-          "Test Dispute",
-          "Description",
-          Math.floor(Date.now() / 1000),
-          Math.floor(Date.now() / 1000) + 3600
-        );
+        .createDispute(1, "Test Dispute", "Description", now, now + 3600);
 
       const vote = 1; // YES
       const salt = 1234;
@@ -169,15 +163,13 @@ describe("Market Contract", function () {
       await market.connect(sentinel1).commitVote(disputeId, commitment);
 
       expect(
-        (await market.disputes(disputeId)).commitments(sentinel1.address)
+        await market.disputeCommitments(disputeId, sentinel1.address)
       ).to.equal(commitment);
 
       await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the deadline
       await market.connect(sentinel1).revealVote(disputeId, vote, salt);
 
-      expect(
-        (await market.disputes(disputeId)).votes(sentinel1.address)
-      ).to.equal(vote);
+      expect(await market.disputeVotes(sentinel1.address)).to.equal(vote);
     });
   });
 

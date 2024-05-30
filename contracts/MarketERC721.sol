@@ -269,6 +269,14 @@ contract Market is ERC721, Ownable {
         disputeCounter++;
     }
 
+    function disputeCommitments(uint256 _disputeId, address _commiter) external view returns (bytes32) {
+        return disputes[_disputeId].commitments[_commiter];
+    }
+
+    function disputeVotes(uint256 _disputeId, address _address) external view returns (Vote) {
+        return disputes[_disputeId].votes[_address];
+    }
+
     function commitVote(uint256 _disputeId, bytes32 _commitment) external onlySentinels {
         require(isSelectedArbitrator(_disputeId, msg.sender), "Not a selected arbitrator");
         Dispute storage dispute = disputes[_disputeId];
