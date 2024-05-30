@@ -87,7 +87,8 @@ describe("Market Contract", function () {
       86_400
     );
     await tx.wait();
-    await market.connect(host1).claimHost(1);
+    const sfaCounter = Number(await market.sfaCounter());
+    await market.connect(host1).claimHost(sfaCounter);
   });
 
   describe("Owner Functions", function () {
@@ -227,19 +228,25 @@ describe("Market Contract", function () {
     it("should allow users to withdraw their balance", async function () {
       const block = await ethers.provider.getBlock("latest");
       now = Number(block.timestamp);
-      await market
-        .connect(owner)
-        .createSFA("cid", BigInt(1e18), now + 3600, 7200);
+      const tx = await market
+        .connect(addr1)
+        .createSFA("cid", BigInt(1e10), now + 3600, 7200);
+      await tx.wait();
       const sfaCounter = Number(await market.sfaCounter());
       await market.connect(host1).claimHost(sfaCounter);
-      await ethers.provider.send("evm_increaseTime", [3601]); // Increase time to pass the start time
-      await market.connect(host1).claimVesting(sfaCounter);
+      await ethers.provider.send("evm_increaseTime", [3601 + 7200]); // Increase time to pass the start time
+      const beforeClaimVesting = await market.tokenBalances(host1);
+      await market.connect(addr1).claimVesting(sfaCounter);
+      const afterClaimVesting = await market.tokenBalances(host1);
+      expect(afterClaimVesting).to.be.above(beforeClaimVesting);
 
+      const innerTokenBalance = await market.tokenBalances(host1.address);
       const balanceBefore = await token.balanceOf(host1.address);
-      await market.connect(host1).withdraw(host1.address, BigInt(1e18));
+      await market
+        .connect(host1)
+        .withdraw(host1.address, BigInt(innerTokenBalance));
       const balanceAfter = await token.balanceOf(host1.address);
-
-      expect(balanceAfter - balanceBefore).to.equal(BigInt(1e18));
+      expect(balanceAfter - balanceBefore).to.equal(BigInt(innerTokenBalance));
     });
   });
 });
