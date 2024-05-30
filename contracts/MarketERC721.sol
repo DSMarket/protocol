@@ -227,12 +227,13 @@ contract Market is ERC721, Ownable {
 
     function registerSentinel() external {
         require(!panic);
-        require(sentinels[msg.sender].status != Status.INACTIVE, "Sentinel already registered");
+        require(sentinels[msg.sender].status == Status.INACTIVE, "Sentinel already registered");
         require(
             IERC20(tokenAddress).transferFrom(msg.sender, address(this), sentinelsCollateral),
             "Token transfer failed"
         );
         sentinels[msg.sender] = Sentinel({status: Status.ACTIVE, collateral: sentinelsCollateral});
+        ++sentinelsCounter;
     }
 
     function createDispute(
