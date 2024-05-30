@@ -409,13 +409,12 @@ contract Market is ERC721, Ownable {
         SFA storage sfa = sfas[_sfaId];
         require(sfa.startTime != 0, "SFA does not exist");
         require(sfa.status == Status.ACTIVE, "SFA is not active");
-        require(sfa.host == msg.sender, "Only the host can claim vesting");
         require(block.timestamp > sfa.startTime, "Vesting period has not started yet");
         uint256 _vestingAvailable = vestingAvailable(_sfaId);
         require(_vestingAvailable > 0, "No vested tokens available");
         uint256 _callerIncentives = (_vestingAvailable * callerIncentivesBPS) / BPS_BASE;
         sfa.vested += _vestingAvailable;
-        tokenBalances[sfa.host] += _vestingAvailable;
+        tokenBalances[sfa.host] += _vestingAvailable - _callerIncentives;
         tokenBalances[msg.sender] += _callerIncentives;
 
         if (sfa.status != Status.FINISHED && (sfa.startTime + sfa.ttl) > block.timestamp) {
@@ -429,7 +428,7 @@ contract Market is ERC721, Ownable {
      */
     function withdraw(address _to, uint256 _amount) external {
         require(!panic, "Panic!");
-        require(tokenBalances[msg.sender] > _amount, "Insufficiente Token balance");
+        require(tokenBalances[msg.sender] >= _amount, "Insufficiente Token balance");
         tokenBalances[msg.sender] -= _amount;
         require(IERC20(tokenAddress).transfer(_to, _amount), "Token transfer failed");
     }
