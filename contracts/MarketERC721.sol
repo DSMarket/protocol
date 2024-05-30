@@ -233,7 +233,8 @@ contract Market is ERC721, Ownable {
             "Token transfer failed"
         );
         sentinels[msg.sender] = Sentinel({status: Status.ACTIVE, collateral: sentinelsCollateral});
-        ++sentinelsCounter;
+        sentinelsIndex[sentinelsCounter] = msg.sender;
+        sentinelsCounter++;
     }
 
     function createDispute(
@@ -254,9 +255,9 @@ contract Market is ERC721, Ownable {
         dispute.deadline = block.timestamp + 1 hours;
 
         uint256 i = 0;
-        uint256 randomNumber = block.prevrandao;
         while (dispute.arbitrators.length < arbitratorsPerDispute) {
-            uint256 randomIndex = (randomNumber >> (i * 15)) & 0xFFFF % sentinelsCounter;
+            uint256 shifted = block.prevrandao >> i;
+            uint256 randomIndex = shifted % sentinelsCounter;
             address selectedSentinel = sentinelsIndex[randomIndex];
             if (sentinels[selectedSentinel].status == Status.ACTIVE) {
                 dispute.arbitrators.push(selectedSentinel);
@@ -265,7 +266,6 @@ contract Market is ERC721, Ownable {
         }
 
         emit DisputeCreated(disputeCounter, msg.sender, _title, _description);
-        emit ArbitratorsSelected(disputeCounter, dispute.arbitrators);
         disputeCounter++;
     }
 
