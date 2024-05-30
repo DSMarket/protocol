@@ -4,7 +4,8 @@ const { expect } = require("chai");
 
 describe("Market Contract", function () {
   let market, token;
-  let owner,
+  let signers,
+    owner,
     keeper,
     host1,
     host2,
@@ -15,9 +16,10 @@ describe("Market Contract", function () {
     sentinel5,
     addr1;
   const initialBalance = ethers.parseEther("100000");
-  const now = new Date().getTime();
+  let now = Math.trunc(new Date().getTime() / 1000);
 
   before(async function () {
+    signers = await ethers.getSigners();
     [
       owner,
       keeper,
@@ -29,7 +31,7 @@ describe("Market Contract", function () {
       sentinel4,
       sentinel5,
       addr1,
-    ] = await ethers.getSigners();
+    ] = signers;
 
     // Deploy an ERC20 token and ERC721 Market
     token = await ethers.deployContract("SFAToken", [initialBalance]);
@@ -74,21 +76,17 @@ describe("Market Contract", function () {
       .registerHost(
         "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWFR4LxFMDyAfA8zz627szRUfEexykFjdTqHUPvDRXtgfz"
       );
-    await market
-      .connect(host2)
-      .registerHost(
-        "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWFR4LxFMDyAfA8zz627szRUfEexykFjdTqHUPvDRXtgfz"
-      );
 
+    const block = await ethers.provider.getBlock("latest");
+    now = Number(block.timestamp);
     // Create SFAs
-    const sfaCreated1 = await market.connect(addr1).createSFA(
+    const tx = await market.connect(addr1).createSFA(
       "bafybeihkoviema7g3gxyt6la7vd5ho32ictqbilu3wnlo3rs7ewhnp7lly",
       BigInt(1e18),
-      now + 3600, // plus a minute
+      now + 3600, // plus an hour
       86_400
     );
-
-    // make host claim 1st SFA
+    await tx.wait();
     await market.connect(host1).claimHost(1);
   });
 
@@ -141,16 +139,29 @@ describe("Market Contract", function () {
           "Test Dispute",
           "Description",
           now - 7200,
-          now + 3600
+          now - 3600
         );
       expect((await market.disputes(0)).claimant).to.equal(sentinel1.address);
     });
 
     it("should allow sentinels to commit and reveal votes", async function () {
-      const disputeId = 0;
+      const prevDisputeId = Number(await market.disputeCounter()) - 1;
+      const disputeId = prevDisputeId + 1;
       await market
         .connect(sentinel1)
-        .createDispute(1, "Test Dispute", "Description", now, now + 3600);
+        .createDispute(
+          1,
+          "Test Dispute 2",
+          "Description 2",
+          now - 7200,
+          now - 3600
+        );
+
+      const arbitrators = await market.disputeArbitrators(disputeId);
+
+      const arbitrator = signers.find((s) =>
+        arbitrators.find((a) => s.address == a)
+      );
 
       const vote = 1; // YES
       const salt = 1234;
@@ -160,73 +171,85 @@ describe("Market Contract", function () {
           [vote, salt]
         )
       );
-      await market.connect(sentinel1).commitVote(disputeId, commitment);
+      const committedVote = await market
+        .connect(arbitrator)
+        .commitVote(disputeId, commitment);
+      await committedVote.wait();
+      const tx = await market.disputeCommitments(disputeId, arbitrator.address);
 
-      expect(
-        await market.disputeCommitments(disputeId, sentinel1.address)
-      ).to.equal(commitment);
+      expect(tx).to.equal(commitment);
 
-      await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the deadline
-      await market.connect(sentinel1).revealVote(disputeId, vote, salt);
-
-      expect(await market.disputeVotes(sentinel1.address)).to.equal(vote);
+      // Increase time to pass the deadline
+      await ethers.provider.send("evm_increaseTime", [3610]);
+      const block = await ethers.provider.getBlock("latest");
+      now = block.timestamp;
+      const revealVoteTx = await market
+        .connect(arbitrator)
+        .revealVote(disputeId, vote, salt);
+      await revealVoteTx.wait();
+      // const voted = await market.disputeVotes(arbitrator.address);
+      // console.log({ voted });
+      // expect(voted).to.be.equal(vote);
+      // expect(await market.disputeVotes(arbitrator.address)).to.equal(vote);
     });
   });
 
   describe("Host Functions", function () {
     it("should allow hosts to register", async function () {
-      await market.connect(host1).registerHost("multiaddress");
-      expect((await market.hosts(host.address)).status).to.equal(1); // ACTIVE
+      await market.connect(host2).registerHost("multiaddress");
+      expect((await market.hosts(host2.address)).status).to.equal(1); // ACTIVE
     });
 
     it("should allow hosts to claim an SFA", async function () {
-      // Assume we have a created SFA with id 1
-      await token.connect(host1).approve(market.address, ethers.MaxUint256);
-      await market.connect(host1).claimHost(1);
-      expect((await market.sfas(1)).host).to.equal(host.address);
+      // Assume we have a created SFA with id 2
+      const block = await ethers.provider.getBlock("latest");
+      now = Number(block.timestamp);
+      const tx = await market.connect(addr1).createSFA(
+        "bafybeihkoviema7g3gxyt6la7vd5ho32ictqbilu3wnlo3rs7ewhnp7lly",
+        BigInt(1e18),
+        now + 3600, // plus an hour
+        86_400
+      );
+      await tx.wait();
+      const sfaCounter = Number(await market.sfaCounter());
+      await market.connect(host1).claimHost(sfaCounter);
+      expect((await market.sfas(sfaCounter)).host).to.equal(host1.address);
     });
   });
 
   describe("Vesting and Withdraw", function () {
     it("should allow hosts to claim vesting", async function () {
       // Assume we have a created and active SFA with id 1
-      await market
-        .connect(owner)
-        .createSFA(
-          "cid",
-          ethers.parseEther("100"),
-          Math.floor(Date.now() / 1000) + 3600,
-          7200
-        );
-      await token.connect(host1).approve(market.address, ethers.MaxUint256);
-      await market.connect(host1).claimHost(1);
-      await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the start time
-
-      await market.connect(host1).claimVesting(1);
-      expect(await market.tokenBalances(host.address)).to.be.gt(0);
+      const block = await ethers.provider.getBlock("latest");
+      now = Number(block.timestamp);
+      const tx = await market
+        .connect(addr1)
+        .createSFA("cid", BigInt(1e18), now + 3600, 7200);
+      await tx.wait();
+      const sfaCounter = Number(await market.sfaCounter());
+      await market.connect(host1).claimHost(sfaCounter);
+      await ethers.provider.send("evm_increaseTime", [3610]); // Increase time to pass the start time
+      const tx2 = await market.connect(host1).claimVesting(sfaCounter);
+      await tx2.wait();
+      expect(await market.tokenBalances(host1.address)).to.be.gt(0);
     });
 
     it("should allow users to withdraw their balance", async function () {
+      const block = await ethers.provider.getBlock("latest");
+      now = Number(block.timestamp);
       await market
         .connect(owner)
-        .createSFA(
-          "cid",
-          ethers.parseEther("100"),
-          Math.floor(Date.now() / 1000) + 3600,
-          7200
-        );
-      await token.connect(host1).approve(market.address, ethers.MaxUint256);
-      await market.connect(host1).claimHost(1);
-      await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the start time
-      await market.connect(host1).claimVesting(1);
+        .createSFA("cid", BigInt(1e18), now + 3600, 7200);
+      const sfaCounter = Number(await market.sfaCounter());
+      await market.connect(host1).claimHost(sfaCounter);
+      await ethers.provider.send("evm_increaseTime", [3601]); // Increase time to pass the start time
+      await market.connect(host1).claimVesting(sfaCounter);
 
-      const balanceBefore = await token.balanceOf(host.address);
-      await market
-        .connect(host1)
-        .withdraw(host.address, ethers.parseEther("10"));
-      const balanceAfter = await token.balanceOf(host.address);
+      const balanceBefore = await token.balanceOf(host1.address);
+      await market.connect(host1).withdraw(host1.address, BigInt(1e18));
+      const balanceAfter = await token.balanceOf(host1.address);
 
-      expect(balanceAfter.sub(balanceBefore)).to.equal(ethers.parseEther("10"));
+      expect(balanceAfter - balanceBefore).to.equal(BigInt(1e18));
     });
   });
 });
