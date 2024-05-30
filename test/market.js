@@ -14,7 +14,7 @@ describe("Market Contract", function () {
     sentinel4,
     sentinel5,
     addr1;
-  const initialBalance = ethers.parseEther("1000");
+  const initialBalance = ethers.parseEther("100000");
   const now = new Date().getTime();
 
   before(async function () {
@@ -40,37 +40,21 @@ describe("Market Contract", function () {
 
     // Transfer tokens to other accounts
     await token.transfer(keeper.address, initialBalance / BigInt(10));
-    await token
-      .connect(keeper)
-      .approve(market.target, initialBalance / BigInt(10));
+    await token.connect(keeper).approve(market.target, ethers.MaxUint256);
     await token.transfer(sentinel1.address, initialBalance / BigInt(10));
-    await token
-      .connect(sentinel1)
-      .approve(market.target, initialBalance / BigInt(10));
+    await token.connect(sentinel1).approve(market.target, ethers.MaxUint256);
     await token.transfer(sentinel2.address, initialBalance / BigInt(10));
-    await token
-      .connect(sentinel2)
-      .approve(market.target, initialBalance / BigInt(10));
+    await token.connect(sentinel2).approve(market.target, ethers.MaxUint256);
     await token.transfer(sentinel3.address, initialBalance / BigInt(10));
-    await token
-      .connect(sentinel3)
-      .approve(market.target, initialBalance / BigInt(10));
+    await token.connect(sentinel3).approve(market.target, ethers.MaxUint256);
     await token.transfer(sentinel4.address, initialBalance / BigInt(10));
-    await token
-      .connect(sentinel4)
-      .approve(market.target, initialBalance / BigInt(10));
+    await token.connect(sentinel4).approve(market.target, ethers.MaxUint256);
     await token.transfer(sentinel5.address, initialBalance / BigInt(10));
-    await token
-      .connect(sentinel5)
-      .approve(market.target, initialBalance / BigInt(10));
+    await token.connect(sentinel5).approve(market.target, ethers.MaxUint256);
     await token.transfer(host1.address, initialBalance / BigInt(10));
-    await token
-      .connect(host1)
-      .approve(market.target, initialBalance / BigInt(10));
+    await token.connect(host1).approve(market.target, ethers.MaxUint256);
     await token.transfer(addr1.address, initialBalance / BigInt(10));
-    await token
-      .connect(addr1)
-      .approve(market.target, initialBalance / BigInt(10));
+    await token.connect(addr1).approve(market.target, ethers.MaxUint256);
 
     // Setup roles
     const tx1 = await market.connect(owner).setKeeper(keeper.address, true);
@@ -131,30 +115,33 @@ describe("Market Contract", function () {
       expect(await market.withdrawalPaused(addr1.address)).to.be.true;
     });
 
-    it("should allow keepers to set panic mode", async function () {
+    it("should allow keepers to set panic mode ON", async function () {
       await market.connect(keeper).setPanic(true);
       expect(await market.panic()).to.be.true;
+    });
+
+    it("should allow keepers to set panic mode OFF", async function () {
+      await market.connect(keeper).setPanic(false);
+      expect(await market.panic()).to.be.false;
     });
   });
 
   describe("Sentinel Functions", function () {
     it("should allow sentinels to register", async function () {
-      await token
-        .connect(addr1)
-        .approve(market.address, ethers.parseEther("30"));
-      await market.connect(addr1).registerSentinel();
+      const tx = await market.connect(addr1).registerSentinel();
+      await tx.wait();
       expect((await market.sentinels(addr1.address)).status).to.equal(1); // ACTIVE
     });
 
     it("should allow sentinels to create disputes", async function () {
       await market
-        .connect(sentinel)
+        .connect(sentinel1)
         .createDispute(
           1,
           "Test Dispute",
           "Description",
-          Math.floor(Date.now() / 1000),
-          Math.floor(Date.now() / 1000) + 3600
+          now - 7200,
+          now + 3600
         );
       expect((await market.disputes(0)).claimant).to.equal(sentinel1.address);
     });
@@ -162,7 +149,7 @@ describe("Market Contract", function () {
     it("should allow sentinels to commit and reveal votes", async function () {
       const disputeId = 0;
       await market
-        .connect(sentinel)
+        .connect(sentinel1)
         .createDispute(
           1,
           "Test Dispute",
@@ -174,16 +161,19 @@ describe("Market Contract", function () {
       const vote = 1; // YES
       const salt = 1234;
       const commitment = ethers.keccak256(
-        ethers.defaultAbiCoder.encode(["uint8", "uint256"], [vote, salt])
+        ethers.AbiCoder.defaultAbiCoder().encode(
+          ["uint8", "uint256"],
+          [vote, salt]
+        )
       );
-      await market.connect(sentinel).commitVote(disputeId, commitment);
+      await market.connect(sentinel1).commitVote(disputeId, commitment);
 
       expect(
         (await market.disputes(disputeId)).commitments(sentinel1.address)
       ).to.equal(commitment);
 
       await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the deadline
-      await market.connect(sentinel).revealVote(disputeId, vote, salt);
+      await market.connect(sentinel1).revealVote(disputeId, vote, salt);
 
       expect(
         (await market.disputes(disputeId)).votes(sentinel1.address)
@@ -199,9 +189,7 @@ describe("Market Contract", function () {
 
     it("should allow hosts to claim an SFA", async function () {
       // Assume we have a created SFA with id 1
-      await token
-        .connect(host1)
-        .approve(market.address, ethers.parseEther("200"));
+      await token.connect(host1).approve(market.address, ethers.MaxUint256);
       await market.connect(host1).claimHost(1);
       expect((await market.sfas(1)).host).to.equal(host.address);
     });
@@ -218,9 +206,7 @@ describe("Market Contract", function () {
           Math.floor(Date.now() / 1000) + 3600,
           7200
         );
-      await token
-        .connect(host1)
-        .approve(market.address, ethers.parseEther("200"));
+      await token.connect(host1).approve(market.address, ethers.MaxUint256);
       await market.connect(host1).claimHost(1);
       await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the start time
 
@@ -237,9 +223,7 @@ describe("Market Contract", function () {
           Math.floor(Date.now() / 1000) + 3600,
           7200
         );
-      await token
-        .connect(host1)
-        .approve(market.address, ethers.parseEther("200"));
+      await token.connect(host1).approve(market.address, ethers.MaxUint256);
       await market.connect(host1).claimHost(1);
       await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the start time
       await market.connect(host1).claimVesting(1);
