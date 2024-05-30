@@ -1,30 +1,111 @@
-const { ethers } = require("hardhat");
+const hre = require("hardhat");
+const ethers = hre.ethers;
 const { expect } = require("chai");
 
 describe("Market Contract", function () {
   let market, token;
-  let owner, keeper, sentinel, host, addr1;
-  const initialBalance = ethers.utils.parseEther("1000");
+  let owner,
+    keeper,
+    host1,
+    host2,
+    sentinel1,
+    sentinel2,
+    sentinel3,
+    sentinel4,
+    sentinel5,
+    addr1;
+  const initialBalance = ethers.parseEther("1000");
+  const now = new Date().getTime();
 
-  beforeEach(async function () {
-    [owner, keeper, sentinel, host, addr1, ...addrs] =
-      await ethers.getSigners();
+  before(async function () {
+    [
+      owner,
+      keeper,
+      host1,
+      host2,
+      sentinel1,
+      sentinel2,
+      sentinel3,
+      sentinel4,
+      sentinel5,
+      addr1,
+    ] = await ethers.getSigners();
+
     // Deploy an ERC20 token and ERC721 Market
     token = await ethers.deployContract("SFAToken", [initialBalance]);
-    await token.deployed();
+    // console.log("Token deployed at:", token.target);
 
-    market = await ethers.deployContract("Market", [token.address]);
-    await market.deployed();
+    market = await ethers.deployContract("Market", [token.target]);
+    // console.log("Market deployed at:", market.target);
 
     // Transfer tokens to other accounts
-    await token.transfer(keeper.address, initialBalance.div(4));
-    await token.transfer(sentinel.address, initialBalance.div(4));
-    await token.transfer(host.address, initialBalance.div(4));
-    await token.transfer(addr1.address, initialBalance.div(4));
+    await token.transfer(keeper.address, initialBalance / BigInt(10));
+    await token
+      .connect(keeper)
+      .approve(market.target, initialBalance / BigInt(10));
+    await token.transfer(sentinel1.address, initialBalance / BigInt(10));
+    await token
+      .connect(sentinel1)
+      .approve(market.target, initialBalance / BigInt(10));
+    await token.transfer(sentinel2.address, initialBalance / BigInt(10));
+    await token
+      .connect(sentinel2)
+      .approve(market.target, initialBalance / BigInt(10));
+    await token.transfer(sentinel3.address, initialBalance / BigInt(10));
+    await token
+      .connect(sentinel3)
+      .approve(market.target, initialBalance / BigInt(10));
+    await token.transfer(sentinel4.address, initialBalance / BigInt(10));
+    await token
+      .connect(sentinel4)
+      .approve(market.target, initialBalance / BigInt(10));
+    await token.transfer(sentinel5.address, initialBalance / BigInt(10));
+    await token
+      .connect(sentinel5)
+      .approve(market.target, initialBalance / BigInt(10));
+    await token.transfer(host1.address, initialBalance / BigInt(10));
+    await token
+      .connect(host1)
+      .approve(market.target, initialBalance / BigInt(10));
+    await token.transfer(addr1.address, initialBalance / BigInt(10));
+    await token
+      .connect(addr1)
+      .approve(market.target, initialBalance / BigInt(10));
 
     // Setup roles
-    await market.connect(owner).setKeeper(keeper.address, true);
-    await market.connect(sentinel).registerSentinel();
+    const tx1 = await market.connect(owner).setKeeper(keeper.address, true);
+    tx1.wait();
+    const tx2 = await market.connect(sentinel1).registerSentinel();
+    tx2.wait();
+    const tx3 = await market.connect(sentinel2).registerSentinel();
+    tx3.wait();
+    const tx4 = await market.connect(sentinel3).registerSentinel();
+    tx4.wait();
+    const tx5 = await market.connect(sentinel4).registerSentinel();
+    tx5.wait();
+    const tx6 = await market.connect(sentinel5).registerSentinel();
+    tx6.wait();
+    await market
+      .connect(host1)
+      .registerHost(
+        "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWFR4LxFMDyAfA8zz627szRUfEexykFjdTqHUPvDRXtgfz"
+      );
+    await market
+      .connect(host2)
+      .registerHost(
+        "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWFR4LxFMDyAfA8zz627szRUfEexykFjdTqHUPvDRXtgfz"
+      );
+
+    // Create SFAs
+    const sfaCreated1 = await market.connect(addr1).createSFA(
+      "bafybeihkoviema7g3gxyt6la7vd5ho32ictqbilu3wnlo3rs7ewhnp7lly",
+      BigInt(1e18),
+      now + 3600, // plus a minute
+      86_400
+    );
+
+    // make host claim 1st SFA
+    await market.connect(host1).claimHost(1);
   });
 
   describe("Owner Functions", function () {
@@ -33,8 +114,8 @@ describe("Market Contract", function () {
       expect(await market.keepers(addr1.address)).to.be.true;
     });
     it("should allow the owner to update sentinel status", async function () {
-      await market.connect(owner).updateSentinelStatus(sentinel.address, 1); // ACTIVE
-      expect((await market.sentinels(sentinel.address)).status).to.equal(1); // ACTIVE
+      await market.connect(owner).updateSentinelStatus(sentinel1.address, 1); // ACTIVE
+      expect((await market.sentinels(sentinel1.address)).status).to.equal(1); // ACTIVE
     });
   });
 
@@ -60,7 +141,7 @@ describe("Market Contract", function () {
     it("should allow sentinels to register", async function () {
       await token
         .connect(addr1)
-        .approve(market.address, ethers.utils.parseEther("30"));
+        .approve(market.address, ethers.parseEther("30"));
       await market.connect(addr1).registerSentinel();
       expect((await market.sentinels(addr1.address)).status).to.equal(1); // ACTIVE
     });
@@ -75,7 +156,7 @@ describe("Market Contract", function () {
           Math.floor(Date.now() / 1000),
           Math.floor(Date.now() / 1000) + 3600
         );
-      expect((await market.disputes(0)).claimant).to.equal(sentinel.address);
+      expect((await market.disputes(0)).claimant).to.equal(sentinel1.address);
     });
 
     it("should allow sentinels to commit and reveal votes", async function () {
@@ -92,36 +173,36 @@ describe("Market Contract", function () {
 
       const vote = 1; // YES
       const salt = 1234;
-      const commitment = ethers.utils.keccak256(
-        ethers.utils.defaultAbiCoder.encode(["uint8", "uint256"], [vote, salt])
+      const commitment = ethers.keccak256(
+        ethers.defaultAbiCoder.encode(["uint8", "uint256"], [vote, salt])
       );
       await market.connect(sentinel).commitVote(disputeId, commitment);
 
       expect(
-        (await market.disputes(disputeId)).commitments(sentinel.address)
+        (await market.disputes(disputeId)).commitments(sentinel1.address)
       ).to.equal(commitment);
 
       await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the deadline
       await market.connect(sentinel).revealVote(disputeId, vote, salt);
 
       expect(
-        (await market.disputes(disputeId)).votes(sentinel.address)
+        (await market.disputes(disputeId)).votes(sentinel1.address)
       ).to.equal(vote);
     });
   });
 
   describe("Host Functions", function () {
     it("should allow hosts to register", async function () {
-      await market.connect(host).registerHost("multiaddress");
+      await market.connect(host1).registerHost("multiaddress");
       expect((await market.hosts(host.address)).status).to.equal(1); // ACTIVE
     });
 
     it("should allow hosts to claim an SFA", async function () {
       // Assume we have a created SFA with id 1
       await token
-        .connect(host)
-        .approve(market.address, ethers.utils.parseEther("200"));
-      await market.connect(host).claimHost(1);
+        .connect(host1)
+        .approve(market.address, ethers.parseEther("200"));
+      await market.connect(host1).claimHost(1);
       expect((await market.sfas(1)).host).to.equal(host.address);
     });
   });
@@ -133,17 +214,17 @@ describe("Market Contract", function () {
         .connect(owner)
         .createSFA(
           "cid",
-          ethers.utils.parseEther("100"),
+          ethers.parseEther("100"),
           Math.floor(Date.now() / 1000) + 3600,
           7200
         );
       await token
-        .connect(host)
-        .approve(market.address, ethers.utils.parseEther("200"));
-      await market.connect(host).claimHost(1);
+        .connect(host1)
+        .approve(market.address, ethers.parseEther("200"));
+      await market.connect(host1).claimHost(1);
       await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the start time
 
-      await market.connect(host).claimVesting(1);
+      await market.connect(host1).claimVesting(1);
       expect(await market.tokenBalances(host.address)).to.be.gt(0);
     });
 
@@ -152,26 +233,24 @@ describe("Market Contract", function () {
         .connect(owner)
         .createSFA(
           "cid",
-          ethers.utils.parseEther("100"),
+          ethers.parseEther("100"),
           Math.floor(Date.now() / 1000) + 3600,
           7200
         );
       await token
-        .connect(host)
-        .approve(market.address, ethers.utils.parseEther("200"));
-      await market.connect(host).claimHost(1);
+        .connect(host1)
+        .approve(market.address, ethers.parseEther("200"));
+      await market.connect(host1).claimHost(1);
       await ethers.provider.send("evm_increaseTime", [3600]); // Increase time to pass the start time
-      await market.connect(host).claimVesting(1);
+      await market.connect(host1).claimVesting(1);
 
       const balanceBefore = await token.balanceOf(host.address);
       await market
-        .connect(host)
-        .withdraw(host.address, ethers.utils.parseEther("10"));
+        .connect(host1)
+        .withdraw(host.address, ethers.parseEther("10"));
       const balanceAfter = await token.balanceOf(host.address);
 
-      expect(balanceAfter.sub(balanceBefore)).to.equal(
-        ethers.utils.parseEther("10")
-      );
+      expect(balanceAfter.sub(balanceBefore)).to.equal(ethers.parseEther("10"));
     });
   });
 });
