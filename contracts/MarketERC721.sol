@@ -269,6 +269,10 @@ contract Market is ERC721, Ownable {
         disputeCounter++;
     }
 
+    function disputeArbitrators(uint256 _disputeId) external view returns (address[] memory) {
+        return disputes[_disputeId].arbitrators;
+    }
+
     function disputeCommitments(uint256 _disputeId, address _commiter) external view returns (bytes32) {
         return disputes[_disputeId].commitments[_commiter];
     }
@@ -293,8 +297,8 @@ contract Market is ERC721, Ownable {
         require(dispute.deadline < block.timestamp, "Commit Deadline not Finnished");
         require((dispute.deadline + 1 hours) > block.timestamp, "Deadline Finnished");
         bytes32 commitment = keccak256(abi.encodePacked(_vote, _salt));
-        require(disputes[_disputeId].commitments[msg.sender] == commitment, "Invalid reveal");
-        disputes[_disputeId].votes[msg.sender] = _vote;
+        require(dispute.commitments[msg.sender] == commitment, "Invalid reveal");
+        dispute.votes[msg.sender] = _vote;
     }
 
     function resolveDispute(uint256 _disputeId) external onlySentinels {
