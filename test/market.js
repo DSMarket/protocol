@@ -145,8 +145,7 @@ describe("Market Contract", function () {
     });
 
     it("should allow sentinels to commit and reveal votes", async function () {
-      const prevDisputeId = Number(await market.disputeCounter()) - 1;
-      const disputeId = prevDisputeId + 1;
+      const disputeId = Number(await market.disputeCounter());
       await market
         .connect(sentinel1)
         .createDispute(
@@ -165,11 +164,9 @@ describe("Market Contract", function () {
 
       const vote = 1; // YES
       const salt = 1234;
-      const commitment = ethers.keccak256(
-        ethers.AbiCoder.defaultAbiCoder().encode(
-          ["uint8", "uint256"],
-          [vote, salt]
-        )
+      const commitment = ethers.solidityPackedKeccak256(
+        ["uint8", "uint256"],
+        [vote, salt]
       );
       const committedVote = await market
         .connect(arbitrator)
@@ -178,19 +175,12 @@ describe("Market Contract", function () {
       const tx = await market.disputeCommitments(disputeId, arbitrator.address);
 
       expect(tx).to.equal(commitment);
-
       // Increase time to pass the deadline
-      await ethers.provider.send("evm_increaseTime", [3610]);
-      const block = await ethers.provider.getBlock("latest");
-      now = block.timestamp;
-      const revealVoteTx = await market
-        .connect(arbitrator)
-        .revealVote(disputeId, vote, salt);
-      await revealVoteTx.wait();
-      // const voted = await market.disputeVotes(arbitrator.address);
-      // console.log({ voted });
-      // expect(voted).to.be.equal(vote);
-      // expect(await market.disputeVotes(arbitrator.address)).to.equal(vote);
+      await ethers.provider.send("evm_increaseTime", [3601]);
+      await market.connect(arbitrator).revealVote(disputeId, vote, salt);
+      const voted = await market.disputeVotes(disputeId, arbitrator.address);
+      expect(voted).to.be.equal(vote);
+      expect(voted).to.equal(vote);
     });
   });
 

@@ -294,8 +294,8 @@ contract Market is ERC721, Ownable {
         require(isSelectedArbitrator(_disputeId, msg.sender), "Not a selected arbitrator");
         Dispute storage dispute = disputes[_disputeId];
         require(dispute.status == Status.ACTIVE, "Dispute No Active");
-        require(dispute.deadline < block.timestamp, "Commit Deadline not Finnished");
-        require((dispute.deadline + 1 hours) > block.timestamp, "Deadline Finnished");
+        require(block.timestamp > dispute.deadline, "Commit Deadline not Finnished");
+        require(block.timestamp < (dispute.deadline + 1 hours), "Deadline Finnished");
         bytes32 commitment = keccak256(abi.encodePacked(_vote, _salt));
         require(dispute.commitments[msg.sender] == commitment, "Invalid reveal");
         dispute.votes[msg.sender] = _vote;
