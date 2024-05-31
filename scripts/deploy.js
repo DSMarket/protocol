@@ -10,7 +10,9 @@ const main = async () => {
   console.log("Running deploy script...");
   try {
     console.log("\n\n===> Deploy SFA Token\n\n");
-    const token = await ethers.deployContract("SFAToken", [100_000_000]);
+    const token = await ethers.deployContract("SFAToken", [
+      BigInt(100_000_000 * 1e18),
+    ]);
     await token.waitForDeployment();
     console.log("Token deployed at:", token.target);
     const market = await ethers.deployContract("Market", [token.target]);
