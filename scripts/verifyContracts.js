@@ -8,13 +8,13 @@ const GAS = {
 
 const main = async () => {
   console.log("Running deploy script...");
-  const TOKEN_ADDRESS = "0x890521272a46306a1d4589a6c0c39f80813db0dc";
-  const MARKET_ADDRESS = "0x5418c03638711c7d5ed6fb34542485a1f6d8ff24";
+  const TOKEN_ADDRESS = "0xBde7d92a79686E4a5771f423F81C46059e5c2222";
+  const MARKET_ADDRESS = "0x9f44CCaBdeEa8a0e662485b547a05bFBf9B6DABE";
   try {
     console.log("Verifying Contracts...");
     // Verify contracts
     console.log("\n\n===> Verifyin SFA Token");
-    await verifyContract(TOKEN_ADDRESS, [100_000_000]);
+    await verifyContract(TOKEN_ADDRESS, BigInt(100_000_000 * 1e18));
     console.log("done");
     console.log("\n\n===> Verifyin SFA Market");
     await verifyContract(MARKET_ADDRESS, [TOKEN_ADDRESS]);
