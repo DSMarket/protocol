@@ -15,7 +15,6 @@ const config = {
       url: "http://127.0.0.1:8545",
       timeout: 300000,
       gas: 15_000_000,
-      accounts: [DEPLOYER_PK],
     },
     sepolia: {
       url: "https://rpc.ankr.com/eth_sepolia",
